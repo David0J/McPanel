@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="card narrow">
+  <h2>First-time setup</h2>
+  <form method="post" class="stack">
+    <label>Admin password
+      <input type="password" name="password" minlength="12" required>
+    </label>
+    <label>Confirm password
+      <input type="password" name="confirm" minlength="12" required>
+    </label>
+    <button class="btn primary" type="submit">Create admin account</button>
+  </form>
+</section>
+{% endblock %}

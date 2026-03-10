@@ -1,0 +1,180 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="grid">
+  <section class="card">
+    <h2>Server</h2>
+    <p><strong>Status:</strong> <span id="server-status">{{ state.status }}</span></p>
+    <p><strong>Jar:</strong> {{ state.jar or 'Not installed yet' }}</p>
+    <div class="row">
+      <button class="btn primary" onclick="serverAction('/server/start')">Start</button>
+      <button class="btn" onclick="serverAction('/server/stop')">Stop</button>
+      <form method="post" action="/world/backup">
+        <button class="btn" type="submit">Backup worlds</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Install / Update server</h2>
+    <form method="post" action="/install" class="stack">
+      <label>Server software
+        <select name="server_type">
+          <option value="paper">Paper</option>
+          <option value="fabric">Fabric</option>
+          <option value="spigot">Spigot</option>
+        </select>
+      </label>
+      <label>Minecraft version
+        <input type="text" name="mc_version" placeholder="1.21.1" required>
+      </label>
+      <button class="btn primary" type="submit">Install</button>
+    </form>
+    <form method="post" action="/build_spigot" class="stack top-gap">
+      <label>Spigot build version
+        <input type="text" name="mc_version" placeholder="1.21.1 or latest">
+      </label>
+      <button class="btn" type="submit">Run BuildTools</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Manager config</h2>
+    <form method="post" action="/app_config/save" class="stack">
+      <label>Java path
+        <input type="text" name="java_path" value="{{ app_cfg.java_path }}">
+      </label>
+      <label>RAM allocation
+        <input type="text" name="memory" value="{{ app_cfg.memory }}">
+      </label>
+      <button class="btn primary" type="submit">Save</button>
+    </form>
+    <p class="muted">Detected OS: {{ platform_name }}</p>
+  </section>
+
+  <section class="card wide">
+    <h2>Live console</h2>
+    <div id="console" class="console"></div>
+    <div class="row top-gap">
+      <input id="console-command" type="text" placeholder="say Hello world">
+      <button class="btn primary" onclick="sendCommand()">Send</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Plugins / mods</h2>
+    <form method="post" action="/plugin/upload" enctype="multipart/form-data" class="stack">
+      <label>Upload plugin (.jar)
+        <input type="file" name="plugin_file" accept=".jar">
+      </label>
+      <button class="btn primary" type="submit">Upload</button>
+    </form>
+    <form method="post" action="/plugin/url" class="stack top-gap">
+      <label>Download from URL
+        <input type="url" name="plugin_url" placeholder="https://example.com/plugin.jar">
+      </label>
+      <button class="btn" type="submit">Download</button>
+    </form>
+    <h3>Installed plugins</h3>
+    <ul>
+      {% for plugin in plugins %}
+        <li>{{ plugin }}
+          <form method="post" action="/plugin/delete/{{ plugin }}" class="inline-form">
+            <button class="btn danger" type="submit">Delete</button>
+          </form>
+        </li>
+      {% else %}
+        <li>No plugins found.</li>
+      {% endfor %}
+    </ul>
+    {% if mods %}
+      <h3>Detected Fabric mods</h3>
+      <ul>{% for mod in mods %}<li>{{ mod }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>World tools</h2>
+    <form method="post" action="/world/upload" enctype="multipart/form-data" class="stack">
+      <label>Upload world zip
+        <input type="file" name="world_zip" accept=".zip">
+      </label>
+      <button class="btn primary" type="submit">Import world</button>
+    </form>
+    <h3>World folders</h3>
+    <ul>
+      {% for world in worlds %}
+        <li>{{ world }}
+          <form method="post" action="/world/delete/{{ world }}" class="inline-form">
+            <button class="btn danger" type="submit">Delete</button>
+          </form>
+        </li>
+      {% else %}
+        <li>No world folders found.</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="card wide">
+    <h2>server.properties editor</h2>
+    <form method="post" action="/properties/save" class="properties-grid">
+      {% if props %}
+        {% for key, value in props.items() %}
+          <label>{{ key }}
+            <input type="text" name="prop_{{ key }}" value="{{ value }}">
+          </label>
+        {% endfor %}
+      {% else %}
+        <p class="muted">Generate this file by starting the server once, then refresh.</p>
+      {% endif %}
+      <div>
+        <button class="btn primary" type="submit">Save properties</button>
+      </div>
+    </form>
+  </section>
+</div>
+
+<script>
+const consoleEl = document.getElementById('console');
+const socket = io();
+socket.emit('join_console', {server: 'main'});
+socket.on('console_history', payload => {
+  consoleEl.innerHTML = '';
+  for (const line of payload.lines) appendLine(line);
+});
+socket.on('console_line', payload => appendLine(payload.line));
+
+function appendLine(line) {
+  const div = document.createElement('div');
+  div.textContent = line;
+  consoleEl.appendChild(div);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+async function serverAction(url) {
+  const res = await fetch(url, {method: 'POST'});
+  const data = await res.json();
+  if (!data.ok) alert(data.error || 'Action failed');
+  refreshStatus();
+}
+
+async function sendCommand() {
+  const command = document.getElementById('console-command').value;
+  const res = await fetch('/server/command', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({command})
+  });
+  const data = await res.json();
+  if (!data.ok) alert(data.error || 'Command failed');
+  document.getElementById('console-command').value = '';
+}
+
+async function refreshStatus() {
+  const res = await fetch('/server/status');
+  const data = await res.json();
+  document.getElementById('server-status').textContent = data.status;
+}
+setInterval(refreshStatus, 5000);
+refreshStatus();
+</script>
+{% endblock %}
